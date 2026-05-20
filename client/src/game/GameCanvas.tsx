@@ -25,7 +25,9 @@ import level3 from './levels/level3.json';
 import level4 from './levels/level4.json';
 import level5 from './levels/level5.json';
 import {
-  PHYSICS_GRAVITY, PLAYER_SPEED, JUMP_VELOCITY, DAMPING_GROUND, DAMPING_AIR, ANGULAR_DAMPING,
+  PHYSICS_GRAVITY, PLAYER_SPEED, JUMP_VELOCITY,
+  GROUND_ACCEL, AIR_ACCEL, FALL_GRAV_MULT, LOW_JUMP_MULT,
+  DAMPING_GROUND, DAMPING_AIR, ANGULAR_DAMPING,
   PLAYER_RADIUS,
   MAX_ROPE_LENGTH, ROPE_PRE_CORR, ROPE_POST_CORR,
   SEND_RATE_MS, RESPAWN_DELAY, FALL_DEATH_Y,
@@ -456,8 +458,16 @@ function runGame(
     const yDir = c.bi === playerBody ? -1 : 1;
     if (c.ni.y * yDir > 0.4) groundTimer = 0.22;
   });
-  let jumpBuf       = 0;    // jump buffer window
-  let wasOnGround   = false; // for landing-particle detection
+  let jumpBuf      = 0;
+  let wasOnGround  = false;
+
+  // Squash-and-stretch: track current scale and where it wants to settle
+  const meshScale   = new THREE.Vector3(1, 1, 1);
+  const targetScale = new THREE.Vector3(1, 1, 1);
+  const scaleOne    = new THREE.Vector3(1, 1, 1);
+
+  // Smooth character yaw (lerp to avoid instant snap)
+  let targetYaw = 0;
 
   // ── Remote players ─────────────────────────────────────────────────────────
   const remoteMap = new Map<string, RemoteEntry>();
@@ -752,16 +762,22 @@ function runGame(
     jumpBuf     = Math.max(0, jumpBuf     - realDt);
     const onGround = groundTimer > 0;
 
-    // Landing particle
-    if (onGround && !wasOnGround) {
-      burst(localMesh.position.x, localMesh.position.y, localMesh.position.z, 0xCCBB88, 6);
+    // Landing detection
+    const justLanded = onGround && !wasOnGround;
+    if (justLanded) {
+      burst(localMesh.position.x, localMesh.position.y, localMesh.position.z, 0xCCBB88, 7);
+      // Squash on land — amount scales with fall speed
+      const fallSpeed = Math.abs(playerBody.velocity.y);
+      const squashAmt = Math.min(0.45, fallSpeed * 0.018);
+      targetScale.set(1 + squashAmt * 0.9, 1 - squashAmt, 1 + squashAmt * 0.9);
     }
     wasOnGround = onGround;
 
     // ── Camera-relative 3-D movement ──────────────────────────────────────────
+    // BUG FIX: right = rotate forward 90° clockwise (was anti-clockwise, swapping A/D)
     const azRad = camAz * (Math.PI / 180);
-    const fwdX = Math.sin(azRad), fwdZ = Math.cos(azRad);
-    const rgtX = -fwdZ, rgtZ = fwdX;
+    const fwdX  = Math.sin(azRad), fwdZ = Math.cos(azRad);
+    const rgtX  = fwdZ,            rgtZ = -fwdX; // corrected right vector
 
     let mvX = 0, mvZ = 0;
     if (keys.has('KeyW') || keys.has('ArrowUp'))    { mvX += fwdX; mvZ += fwdZ; }
@@ -769,29 +785,71 @@ function runGame(
     if (keys.has('KeyA') || keys.has('ArrowLeft'))  { mvX -= rgtX; mvZ -= rgtZ; }
     if (keys.has('KeyD') || keys.has('ArrowRight')) { mvX += rgtX; mvZ += rgtZ; }
 
-    if (mvX !== 0 || mvZ !== 0) {
-      const len = Math.sqrt(mvX * mvX + mvZ * mvZ);
-      playerBody.velocity.x = (mvX / len) * PLAYER_SPEED;
-      playerBody.velocity.z = (mvZ / len) * PLAYER_SPEED;
-      localMesh.rotation.y  = Math.atan2(-mvZ, mvX) + Math.PI / 2;
-      // Leg/arm walk animation
+    const isMoving = mvX !== 0 || mvZ !== 0;
+
+    if (isMoving) {
+      const len    = Math.sqrt(mvX * mvX + mvZ * mvZ);
+      const ux     = mvX / len, uz = mvZ / len;
+      const tgtVX  = ux * PLAYER_SPEED;
+      const tgtVZ  = uz * PLAYER_SPEED;
+
+      // Framerate-independent acceleration lerp
+      // Formula: 1 - (1 - accel)^(realDt * 60)  keeps feel consistent at any fps
+      const accel  = onGround ? GROUND_ACCEL : AIR_ACCEL;
+      const lerpF  = 1 - Math.pow(1 - accel, realDt * 60);
+      playerBody.velocity.x += (tgtVX - playerBody.velocity.x) * lerpF;
+      playerBody.velocity.z += (tgtVZ - playerBody.velocity.z) * lerpF;
+
+      // Smooth character yaw toward movement direction
+      targetYaw = Math.atan2(-uz, ux) + Math.PI / 2;
+
+      // Leg/arm walk bob
       const bob = Math.sin(now * 0.014) * 0.2;
-      const ch = localMesh.children;
+      const ch  = localMesh.children;
       if (ch[3]) ch[3].position.y = 0.22 + bob * 0.5;
       if (ch[4]) ch[4].position.y = 0.22 - bob * 0.5;
+    } else if (onGround) {
+      // Decelerate on ground when no key pressed (friction)
+      playerBody.velocity.x *= 0.72;
+      playerBody.velocity.z *= 0.72;
     }
 
-    // Jump
+    // Smooth yaw — wrap-around safe angle interpolation
+    {
+      let diff = targetYaw - localMesh.rotation.y;
+      while (diff >  Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      localMesh.rotation.y += diff * 0.22;
+    }
+
+    // ── Jump ─────────────────────────────────────────────────────────────────
     if (jumpBuf > 0 && onGround) {
       playerBody.velocity.y = JUMP_VELOCITY;
       jumpBuf = 0; groundTimer = 0;
+      // Stretch upward on jump
+      targetScale.set(0.78, 1.35, 0.78);
     }
-    // Variable height: cut on release
-    // Variable jump height: only gentle cut, only if Space released while still rising fast
+    // Variable height: gentle cut when Space released while still rising
     if (!keys.has('Space') && playerBody.velocity.y > 10) playerBody.velocity.y *= 0.92;
 
-    // Switch damping based on ground contact (crisp stop on ground, free flight in air)
+    // Dynamic damping: stops sliding on landing, preserves momentum in air
     playerBody.linearDamping = onGround ? DAMPING_GROUND : DAMPING_AIR;
+
+    // ── Fall gravity curve ────────────────────────────────────────────────────
+    // Extra downward pull makes the jump arc feel snappy rather than floaty.
+    // Applied per realDt (not per substep) since it's a feel tweak, not a constraint.
+    if (playerBody.velocity.y < 0) {
+      // Falling: much faster descent
+      playerBody.velocity.y += PHYSICS_GRAVITY * (FALL_GRAV_MULT - 1) * realDt;
+    } else if (playerBody.velocity.y > 0 && !keys.has('Space')) {
+      // Rising without holding Space: slightly faster peak → shorter hop when tapped
+      playerBody.velocity.y += PHYSICS_GRAVITY * (LOW_JUMP_MULT - 1) * realDt;
+    }
+
+    // ── Squash-and-stretch update ─────────────────────────────────────────────
+    meshScale.lerp(targetScale, 0.28);
+    targetScale.lerp(scaleOne, 0.22);
+    localMesh.scale.copy(meshScale);
 
     // ── Chain constraint — PRE-STEP (velocity) ─────────────────────────────
     let ri = 0;
@@ -833,7 +891,13 @@ function runGame(
         playerBody.velocity.y = Math.min(wb.strength, playerBody.velocity.y + wb.strength * realDt * 10);
     }
 
-    // ── Physics substeps ───────────────────────────────────────────────────
+    // ── Physics substeps ─────────────────────────────────────────────────────
+    // Snapshot platform positions BEFORE any movement this frame so we can
+    // compute the delta and carry the player with the platform they stand on.
+    const platSnap = movPlats.map(mp => ({
+      x: mp.body.position.x, y: mp.body.position.y, z: mp.body.position.z,
+    }));
+
     accumulator += realDt;
     while (accumulator >= FIXED_DT) {
       platTime += FIXED_DT;
@@ -846,6 +910,29 @@ function runGame(
       }
       world.step(FIXED_DT);
       accumulator -= FIXED_DT;
+    }
+
+    // ── Moving platform carry ────────────────────────────────────────────────
+    // If the player is standing on a kinematic platform, apply the platform's
+    // total displacement this frame to the player's position so they ride it.
+    if (onGround) {
+      for (let i = 0; i < movPlats.length; i++) {
+        const mp  = movPlats[i];
+        const hW  = mp.p.w / 2 + 0.12;
+        const hD  = mp.p.d / 2 + 0.12;
+        const top = mp.body.position.y + mp.p.h / 2;
+        const bot = playerBody.position.y - PLAYER_RADIUS;
+        if (
+          Math.abs(playerBody.position.x - mp.body.position.x) < hW &&
+          Math.abs(playerBody.position.z - mp.body.position.z) < hD &&
+          Math.abs(bot - top) < 0.3
+        ) {
+          playerBody.position.x += mp.body.position.x - platSnap[i].x;
+          playerBody.position.y += mp.body.position.y - platSnap[i].y;
+          playerBody.position.z += mp.body.position.z - platSnap[i].z;
+          break;
+        }
+      }
     }
 
     // ── Chain — POST-STEP position correction (PBD) ────────────────────────
