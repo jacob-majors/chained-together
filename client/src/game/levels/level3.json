@@ -1,0 +1,39 @@
+{
+  "id": "level3",
+  "name": "Sky Bridge",
+  "spawnX": 0, "spawnY": 3, "spawnZ": 0,
+  "finishY": 50,
+  "platforms": [
+    { "id": "g",   "x":  0,  "y": 0,  "z": 0,  "w": 14, "h": 0.8, "d": 7, "type": "static",  "color": "#AADDFF" },
+    { "id": "s1",  "x": -4,  "y": 4,  "z": -1, "w": 6,  "h": 0.5, "d": 5, "type": "static",  "color": "#CCEEFF" },
+    { "id": "s2",  "x":  4,  "y": 7,  "z":  2, "w": 6,  "h": 0.5, "d": 5, "type": "static",  "color": "#FFFFFF" },
+    { "id": "s3",  "x": -1,  "y": 10, "z": -1, "w": 5,  "h": 0.5, "d": 5, "type": "static",  "color": "#DDEEFF" },
+    { "id": "br1", "x":  4,  "y": 13, "z":  0, "w": 8,  "h": 0.5, "d": 2, "type": "static",  "color": "#AABBCC" },
+    { "id": "br2", "x": -4,  "y": 15, "z":  0, "w": 8,  "h": 0.5, "d": 2, "type": "static",  "color": "#AABBCC" },
+    { "id": "cp1p","x":  0,  "y": 18, "z":  0, "w": 8,  "h": 0.5, "d": 6, "type": "static",  "color": "#55BBEE" },
+    { "id": "mp1", "x":  0,  "y": 22, "z":  0, "w": 5,  "h": 0.5, "d": 4, "type": "moving",  "color": "#FFFFFF", "moveX": 5, "speed": 1.0 },
+    { "id": "s4",  "x": -5,  "y": 26, "z": -1, "w": 4,  "h": 0.5, "d": 4, "type": "static",  "color": "#CCDDEE" },
+    { "id": "mp2", "x":  4,  "y": 29, "z":  1, "w": 4,  "h": 0.5, "d": 4, "type": "moving",  "color": "#FFFFFF", "moveZ": 3, "speed": 1.2 },
+    { "id": "br3", "x":  0,  "y": 32, "z":  0, "w": 3,  "h": 0.5, "d": 7, "type": "static",  "color": "#99AACC" },
+    { "id": "br4", "x": -5,  "y": 35, "z":  0, "w": 7,  "h": 0.5, "d": 2, "type": "static",  "color": "#99AACC" },
+    { "id": "cp2p","x":  0,  "y": 38, "z":  0, "w": 7,  "h": 0.5, "d": 5, "type": "static",  "color": "#44AADD" },
+    { "id": "mp3", "x":  4,  "y": 41, "z":  0, "w": 3,  "h": 0.5, "d": 4, "type": "moving",  "color": "#FFFFFF", "moveX": 4, "speed": 1.5 },
+    { "id": "s5",  "x": -4,  "y": 44, "z":  1, "w": 3,  "h": 0.5, "d": 4, "type": "static",  "color": "#CCDDEE" },
+    { "id": "s6",  "x":  2,  "y": 47, "z": -1, "w": 3,  "h": 0.5, "d": 4, "type": "static",  "color": "#CCDDEE" },
+    { "id": "fin", "x":  0,  "y": 51, "z":  0, "w": 10, "h": 0.6, "d": 7, "type": "static",  "color": "#FFD700" }
+  ],
+  "hazards": [
+    { "x": 0, "y": -0.9, "z": 0, "w": 60, "h": 0.5, "d": 40, "type": "lava" }
+  ],
+  "checkpoints": [
+    { "x": 0, "y": 19, "z": 0, "index": 0 },
+    { "x": 0, "y": 39, "z": 0, "index": 1 }
+  ],
+  "windBoosts": [
+    { "x": 0, "y": 12, "z": 0, "radius": 2.2, "height": 6, "strength": 14 },
+    { "x": -5,"y": 30, "z": 0, "radius": 2.2, "height": 6, "strength": 14 }
+  ],
+  "pendulums":    [],
+  "rotatingBars": [],
+  "coopDoors":    []
+}

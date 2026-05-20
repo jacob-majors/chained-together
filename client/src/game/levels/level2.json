@@ -1,0 +1,47 @@
+{
+  "id": "level2",
+  "name": "Freefall Funhouse",
+  "spawnX": 0, "spawnY": 3, "spawnZ": 0,
+  "finishY": 44,
+  "platforms": [
+    { "id": "ground",  "x":  0,  "y": 0,  "z": 0,  "w": 16, "h": 1,   "d": 8,  "type": "static",  "color": "#FF5BAD" },
+    { "id": "a1",  "x": -4,  "y": 4,  "z": -2, "w": 5,  "h": 0.7, "d": 5,  "type": "static",  "color": "#00BBDD" },
+    { "id": "a2",  "x":  4,  "y": 6,  "z":  2, "w": 5,  "h": 0.7, "d": 5,  "type": "static",  "color": "#9060E0" },
+    { "id": "a3",  "x":  0,  "y": 9,  "z": -1, "w": 5,  "h": 0.7, "d": 5,  "type": "static",  "color": "#FF8C20" },
+
+    { "id": "spin_floor", "x": 0, "y": 12, "z": 0, "w": 14, "h": 0.7, "d": 14, "type": "static", "color": "#FF3D7F" },
+
+    { "id": "b1",  "x":  4,  "y": 17, "z":  3, "w": 4,  "h": 0.7, "d": 5,  "type": "moving",  "color": "#44EE88", "moveX": 4, "speed": 1.3 },
+    { "id": "b2",  "x": -4,  "y": 19, "z": -3, "w": 4,  "h": 0.7, "d": 5,  "type": "static",  "color": "#00BBDD" },
+
+    { "id": "door_floor", "x": 0, "y": 22, "z": 0, "w": 16, "h": 0.7, "d": 10, "type": "static", "color": "#5566FF" },
+
+    { "id": "c1",  "x":  3,  "y": 26, "z": -2, "w": 5,  "h": 0.7, "d": 5,  "type": "moving",  "color": "#FF5BAD", "moveZ": 3, "speed": 1.5 },
+    { "id": "c2",  "x": -3,  "y": 29, "z":  2, "w": 4,  "h": 0.7, "d": 5,  "type": "static",  "color": "#FFE030" },
+    { "id": "c3",  "x":  0,  "y": 33, "z":  0, "w": 4,  "h": 0.7, "d": 5,  "type": "moving",  "color": "#9060E0", "moveX": 3, "speed": 1.8 },
+    { "id": "c4",  "x":  4,  "y": 36, "z": -2, "w": 3.5,"h": 0.7, "d": 5,  "type": "static",  "color": "#FF8C20" },
+    { "id": "c5",  "x": -4,  "y": 39, "z":  2, "w": 3.5,"h": 0.7, "d": 5,  "type": "static",  "color": "#00BBDD" },
+    { "id": "finish_plat", "x": 0, "y": 44.5, "z": 0, "w": 10, "h": 0.7, "d": 7, "type": "static", "color": "#FFD700" }
+  ],
+  "hazards": [
+    { "x":  0, "y": -0.9, "z": 0, "w": 60, "h": 0.5, "d": 40, "type": "lava" }
+  ],
+  "checkpoints": [
+    { "x":  0, "y": 13, "z": 0, "index": 0 },
+    { "x":  0, "y": 23, "z": 0, "index": 1 }
+  ],
+  "windBoosts": [],
+  "pendulums": [],
+  "rotatingBars": [
+    { "x": 0, "y": 13, "z": 0, "radius": 5.0, "barWidth": 0.5, "barHeight": 2.0, "speed": 0.35 },
+    { "x": 0, "y": 13, "z": 0, "radius": 5.0, "barWidth": 0.5, "barHeight": 2.0, "speed": -0.22 }
+  ],
+  "coopDoors": [
+    {
+      "id": "door1",
+      "x": 0, "y": 23, "z": 1.5,
+      "width": 3.5, "height": 4, "depth": 0.5,
+      "activateRadius": 3.5
+    }
+  ]
+}

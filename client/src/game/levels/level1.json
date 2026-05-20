@@ -1,0 +1,52 @@
+{
+  "id": "level1",
+  "name": "The Ascent",
+  "spawnX": 0, "spawnY": 3, "spawnZ": 0,
+  "finishY": 84,
+  "platforms": [
+    { "id": "ground",   "x":  0,   "y": 0,  "z": 0, "w": 16, "h": 1,   "d": 8, "type": "static",  "color": "#5A5250" },
+    { "id": "s1",  "x": -4,  "y": 5,  "z": -1, "w": 5,  "h": 0.7, "d": 5, "type": "static",  "color": "#706860" },
+    { "id": "s2",  "x":  4,  "y": 8,  "z":  2, "w": 5,  "h": 0.7, "d": 5, "type": "static",  "color": "#706860" },
+    { "id": "s3",  "x": -2,  "y": 12, "z": -2, "w": 4,  "h": 0.7, "d": 5, "type": "static",  "color": "#686060" },
+    { "id": "s4",  "x":  5,  "y": 15, "z":  1, "w": 4,  "h": 0.7, "d": 5, "type": "static",  "color": "#686060" },
+    { "id": "s5",  "x":  0,  "y": 18, "z":  0, "w": 6,  "h": 0.7, "d": 5, "type": "static",  "color": "#686060" },
+    { "id": "cp1p","x": -4,  "y": 22, "z": -1, "w": 5,  "h": 0.7, "d": 5, "type": "static",  "color": "#3A6A5A" },
+    { "id": "s6",  "x":  4,  "y": 26, "z":  2, "w": 3,  "h": 0.7, "d": 5, "type": "static",  "color": "#706060" },
+    { "id": "s7",  "x": -3,  "y": 30, "z": -2, "w": 3,  "h": 0.7, "d": 5, "type": "static",  "color": "#706060" },
+    { "id": "s8",  "x":  2,  "y": 34, "z":  0, "w": 4,  "h": 0.7, "d": 5, "type": "static",  "color": "#686060" },
+    { "id": "mp1", "x":  0,  "y": 38, "z":  1, "w": 3,  "h": 0.7, "d": 5, "type": "moving",  "color": "#8B7A00", "moveX": 5, "speed": 1.2 },
+    { "id": "s9",  "x": -5,  "y": 43, "z": -1, "w": 3,  "h": 0.7, "d": 5, "type": "static",  "color": "#686060" },
+    { "id": "mp2", "x":  3,  "y": 47, "z":  2, "w": 3,  "h": 0.7, "d": 5, "type": "moving",  "color": "#8B7A00", "moveX": 4, "speed": 1.5 },
+    { "id": "cp2p","x":  0,  "y": 51, "z":  0, "w": 6,  "h": 0.7, "d": 5, "type": "static",  "color": "#2A5A7A" },
+    { "id": "s10", "x":  5,  "y": 55, "z": -2, "w": 2.5,"h": 0.7, "d": 5, "type": "static",  "color": "#606070" },
+    { "id": "s11", "x": -4,  "y": 59, "z":  2, "w": 2.5,"h": 0.7, "d": 5, "type": "static",  "color": "#606070" },
+    { "id": "mp3", "x":  1,  "y": 63, "z":  0, "w": 3,  "h": 0.7, "d": 5, "type": "moving",  "color": "#8B7A00", "moveX": 6, "speed": 1.8 },
+    { "id": "s12", "x": -3,  "y": 67, "z": -1, "w": 3,  "h": 0.7, "d": 5, "type": "static",  "color": "#606070" },
+    { "id": "mp4", "x":  4,  "y": 71, "z":  2, "w": 2.5,"h": 0.7, "d": 5, "type": "moving",  "color": "#8B7A00", "moveY": 2, "speed": 1.5 },
+    { "id": "cp3p","x":  0,  "y": 75, "z":  0, "w": 5,  "h": 0.7, "d": 5, "type": "static",  "color": "#7A3A3A" },
+    { "id": "s13", "x": -4,  "y": 79, "z": -1, "w": 2,  "h": 0.7, "d": 5, "type": "static",  "color": "#807058" },
+    { "id": "s14", "x":  4,  "y": 82, "z":  1, "w": 2,  "h": 0.7, "d": 5, "type": "static",  "color": "#807058" },
+    { "id": "finish_plat", "x": 0, "y": 85.5, "z": 0, "w": 9, "h": 0.7, "d": 6, "type": "static", "color": "#B08000" }
+  ],
+  "hazards": [
+    { "x":  0,  "y": -0.9, "z": 0, "w": 50, "h": 0.5, "d": 30, "type": "lava" },
+    { "x":  2,  "y": 21.8, "z": 0, "w": 1.5,"h": 0.6, "d": 3,  "type": "spike" },
+    { "x": -1,  "y": 50.8, "z": 0, "w": 2,  "h": 0.6, "d": 3,  "type": "spike" },
+    { "x":  3,  "y": 74.8, "z": 0, "w": 2,  "h": 0.6, "d": 3,  "type": "spike" }
+  ],
+  "checkpoints": [
+    { "x": -4, "y": 23, "z": 0, "index": 0 },
+    { "x":  0, "y": 52, "z": 0, "index": 1 },
+    { "x":  0, "y": 76, "z": 0, "index": 2 }
+  ],
+  "windBoosts": [
+    { "x":  0, "y": 30, "z": 0, "radius": 2, "height": 7, "strength": 14 },
+    { "x": -5, "y": 55, "z": 0, "radius": 2, "height": 7, "strength": 16 }
+  ],
+  "pendulums": [
+    { "x": 0, "pivotY": 43, "z": 0, "length": 5.5, "swingAngle": 1.0, "speed": 1.3, "radius": 0.55 },
+    { "x": 3, "pivotY": 68, "z": 0, "length": 5.0, "swingAngle": 0.9, "speed": 1.6, "radius": 0.55 }
+  ],
+  "rotatingBars": [],
+  "coopDoors": []
+}
