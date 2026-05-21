@@ -246,38 +246,273 @@ function runGame(
   renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
+  // ── Per-level sky & atmosphere ───────────────────────────────────────────
+  const SKY: Record<string, { zenith: number; horizon: number; fog: number; sun: number; amb: number; hem: number }> = {
+    level1: { zenith: 0x0d1a50, horizon: 0xD4874A, fog: 0xB87040, sun: 0xFFCCA0, amb: 0xFFCCA0, hem: 0x558800 },
+    level2: { zenith: 0x1155CC, horizon: 0x88DDFF, fog: 0x99DDFF, sun: 0xFFFFFF, amb: 0xFFFFFF, hem: 0x558844 },
+    level3: { zenith: 0x1A5599, horizon: 0xBBEEFF, fog: 0xCCEEFF, sun: 0xFFFFFF, amb: 0xEEF8FF, hem: 0x6688AA },
+    level4: { zenith: 0x1a0500, horizon: 0xCC2200, fog: 0x881100, sun: 0xFF6600, amb: 0xFF5500, hem: 0x330800 },
+    level5: { zenith: 0x020010, horizon: 0x220055, fog: 0x110033, sun: 0x8855FF, amb: 0x551188, hem: 0x220044 },
+  };
+  const atm = SKY[levelId] ?? SKY['level2'];
+
   // ── Scene & camera ────────────────────────────────────────────────────────
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87DAFF);
-  scene.fog = new THREE.Fog(0x87DAFF, 70, 220);
+  scene.fog = new THREE.FogExp2(atm.fog, levelId === 'level5' ? 0.006 : 0.009);
 
-  const camera = new THREE.PerspectiveCamera(62, container.clientWidth / container.clientHeight, 0.1, 300);
-  // Explicit initial position so frame-0 renders correctly
-  camera.position.set(
-    levelData.spawnX,
-    levelData.spawnY + 9,
-    levelData.spawnZ + CAM_DIST_DEF
-  );
+  const camera = new THREE.PerspectiveCamera(62, container.clientWidth / container.clientHeight, 0.1, 350);
+  camera.position.set(levelData.spawnX, levelData.spawnY + 9, levelData.spawnZ + CAM_DIST_DEF);
   camera.lookAt(levelData.spawnX, levelData.spawnY + 1, levelData.spawnZ);
 
-  // ── Lights ────────────────────────────────────────────────────────────────
-  scene.add(new THREE.AmbientLight(0xfff8e0, 0.85));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.1);
-  sun.position.set(12, 30, 14); sun.castShadow = true;
-  sun.shadow.mapSize.set(512, 512);
-  sun.shadow.camera.left = sun.shadow.camera.bottom = -45;
-  sun.shadow.camera.right = sun.shadow.camera.top   =  45;
-  sun.shadow.camera.far = 250;
-  scene.add(sun);
-  scene.add(new THREE.HemisphereLight(0x87DAFF, 0x558844, 0.5));
+  // ── Gradient sky sphere ───────────────────────────────────────────────────
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      zenith:  { value: new THREE.Color(atm.zenith)  },
+      horizon: { value: new THREE.Color(atm.horizon) },
+    },
+    vertexShader: `
+      varying vec3 vWorldPos;
+      void main() {
+        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 zenith;
+      uniform vec3 horizon;
+      varying vec3 vWorldPos;
+      void main() {
+        float h = clamp(normalize(vWorldPos).y, 0.0, 1.0);
+        // pow(h, 0.45) gives a wide, glowing horizon band
+        gl_FragColor = vec4(mix(horizon, zenith, pow(h, 0.45)), 1.0);
+      }
+    `,
+  });
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(280, 32, 16), skyMat));
 
-  // Clouds
-  const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.86 });
-  for (let i = 0; i < 30; i++) {
-    const cl = new THREE.Mesh(new THREE.BoxGeometry(4 + Math.random() * 10, 1.5 + Math.random() * 2, 4), cloudMat);
-    cl.position.set((Math.random() - 0.5) * 90, 5 + Math.random() * 90, -16 - Math.random() * 30);
-    cl.matrixAutoUpdate = false; cl.updateMatrix();
-    scene.add(cl);
+  // ── Lights ────────────────────────────────────────────────────────────────
+  scene.add(new THREE.AmbientLight(atm.amb, levelId === 'level5' ? 0.6 : 0.8));
+
+  const sun = new THREE.DirectionalLight(atm.sun, 1.15);
+  sun.position.set(14, 40, 16);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);  // upgrade from 512 → sharper shadows
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -50;
+  sun.shadow.camera.right = sun.shadow.camera.top   =  50;
+  sun.shadow.camera.far = 280;
+  scene.add(sun);
+  scene.add(new THREE.HemisphereLight(atm.horizon, atm.hem, 0.55));
+
+  // Level 4: orange point lights for lava glow
+  if (levelId === 'level4') {
+    for (let i = 0; i < 5; i++) {
+      const pl = new THREE.PointLight(0xFF4400, 2.5, 22);
+      pl.position.set((Math.random() - 0.5) * 16, -0.5, (Math.random() - 0.5) * 6);
+      scene.add(pl);
+    }
+  }
+  // Level 5: purple fill lights
+  if (levelId === 'level5') {
+    const pl = new THREE.PointLight(0x8844FF, 3, 35);
+    pl.position.set(0, 40, 0);
+    scene.add(pl);
+  }
+
+  // ── Animated water ────────────────────────────────────────────────────────
+  // Sits well below the death plane (FALL_DEATH_Y = -6), gives visual depth.
+  const waterUniforms = {
+    time:         { value: 0 },
+    deepColor:    { value: new THREE.Color(levelId === 'level4' ? 0x440000 : 0x0044AA) },
+    shallowColor: { value: new THREE.Color(levelId === 'level4' ? 0xFF3300 : 0x00AADD) },
+    sunDir:       { value: new THREE.Vector3(0.45, 0.6, 0.65).normalize() },
+  };
+  const waterMat = new THREE.ShaderMaterial({
+    uniforms: waterUniforms,
+    transparent: true,
+    depthWrite: false,
+    vertexShader: `
+      uniform float time;
+      varying vec2  vUv;
+      varying float vH;
+      varying vec3  vNorm;
+      void main() {
+        vUv = uv;
+        vec3 p = position;
+        float h =
+          sin(p.x * 0.12 + time * 1.10) * 0.90 +
+          sin(p.z * 0.18 + time * 0.80) * 0.70 +
+          sin(p.x * 0.30 + p.z * 0.24 + time * 1.40) * 0.40 +
+          sin(p.x * 0.06 - p.z * 0.10 + time * 0.55) * 0.60 +
+          sin(p.x * 0.45 + p.z * 0.50 + time * 1.90) * 0.18;
+        p.y += h;
+        vH = h;
+        // Approximate per-vertex normal for specular
+        float e = 0.6;
+        float hx = sin((p.x+e)*0.12+time*1.1)*0.9 + sin(p.z*0.18+time*0.8)*0.7;
+        float hz = sin(p.x*0.12+time*1.1)*0.9 + sin((p.z+e)*0.18+time*0.8)*0.7;
+        vNorm = normalize(vec3(h - hx, e, h - hz));
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3  deepColor;
+      uniform vec3  shallowColor;
+      uniform vec3  sunDir;
+      uniform float time;
+      varying vec2  vUv;
+      varying float vH;
+      varying vec3  vNorm;
+      void main() {
+        float t   = clamp((vH + 2.5) * 0.24, 0.0, 1.0);
+        vec3  col = mix(deepColor, shallowColor, t);
+        // Diffuse
+        col *= 0.55 + max(0.0, dot(vNorm, sunDir)) * 0.65;
+        // Specular
+        vec3 R   = reflect(-sunDir, vNorm);
+        float sp = pow(max(0.0, R.z), 40.0);
+        col += vec3(sp * 0.6);
+        // Foam
+        float foam = smoothstep(0.80, 1.0, t);
+        col  = mix(col, vec3(0.95, 0.98, 1.0), foam * 0.55);
+        // Soft transparent edges
+        float edge = min(min(vUv.x, 1.0-vUv.x), min(vUv.y, 1.0-vUv.y)) * 5.0;
+        gl_FragColor = vec4(col, clamp(edge, 0.0, 1.0) * 0.88);
+      }
+    `,
+  });
+  const waterGeo = new THREE.PlaneGeometry(500, 500, 120, 120);
+  waterGeo.rotateX(-Math.PI / 2);
+  const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+  waterMesh.position.y = -9;
+  waterMesh.receiveShadow = false;
+  scene.add(waterMesh);
+
+  // ── Clouds ────────────────────────────────────────────────────────────────
+  // Volumetric-looking clouds built from multiple overlapping rounded boxes
+  const cloudBase = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.82 });
+  function addCloud(x: number, y: number, z: number, scale: number) {
+    const sizes: [number, number, number, number, number, number][] = [
+      [scale * 4, scale * 1.4, scale * 3, 0, 0, 0],
+      [scale * 2.5, scale * 1.2, scale * 2.2, scale * 1.5, 0, 0],
+      [scale * 2.5, scale * 1.2, scale * 2.2, -scale * 1.5, 0, 0],
+      [scale * 2, scale * 1.0, scale * 1.8, 0, 0, scale * 1.2],
+    ];
+    for (const [w, h, d, ox, oy, oz] of sizes) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), cloudBase);
+      m.position.set(x + ox, y + oy, z + oz);
+      m.matrixAutoUpdate = false; m.updateMatrix();
+      scene.add(m);
+    }
+  }
+  const cloudYRange = levelData.finishY * 0.7;
+  for (let i = 0; i < 22; i++) {
+    addCloud(
+      (Math.random() - 0.5) * 110,
+      6 + Math.random() * cloudYRange,
+      -18 - Math.random() * 40,
+      0.8 + Math.random() * 1.4,
+    );
+  }
+
+  // ── Stars (level 5 only) ──────────────────────────────────────────────────
+  if (levelId === 'level5') {
+    const sGeo = new THREE.BufferGeometry();
+    const sPos = new Float32Array(2000 * 3);
+    for (let i = 0; i < 2000; i++) {
+      sPos[i*3]   = (Math.random() - 0.5) * 600;
+      sPos[i*3+1] = Math.random() * 300;
+      sPos[i*3+2] = (Math.random() - 0.5) * 600;
+    }
+    sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+    scene.add(new THREE.Points(sGeo,
+      new THREE.PointsMaterial({ color: 0xffffff, size: 0.22, sizeAttenuation: true, transparent: true, opacity: 0.85 })
+    ));
+    // Purple nebula smear (large transparent sphere)
+    scene.add(new THREE.Mesh(
+      new THREE.SphereGeometry(180, 16, 8),
+      new THREE.MeshBasicMaterial({ color: 0x220066, transparent: true, opacity: 0.18, side: THREE.BackSide })
+    ));
+  }
+
+  // ── Procedural canvas textures ────────────────────────────────────────────
+  // Creates tileable brick/stone patterns without external texture files.
+  function makePlatTex(hexColor: string, style: 'stone' | 'moving' | 'carnival' | 'cloud' | 'metal'): THREE.CanvasTexture {
+    const SZ = 256;
+    const cv = document.createElement('canvas'); cv.width = cv.height = SZ;
+    const cx = cv.getContext('2d')!;
+    cx.fillStyle = hexColor; cx.fillRect(0, 0, SZ, SZ);
+
+    if (style === 'stone') {
+      // Brick mortar lines
+      const bW = 64, bH = 32;
+      cx.strokeStyle = 'rgba(0,0,0,0.28)'; cx.lineWidth = 3;
+      for (let y = 0; y <= SZ; y += bH) {
+        const off = (Math.floor(y / bH) % 2) * (bW / 2);
+        cx.beginPath(); cx.moveTo(0, y); cx.lineTo(SZ, y); cx.stroke();
+        for (let x = off; x <= SZ; x += bW) {
+          cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x, y + bH); cx.stroke();
+        }
+      }
+      // Random noise patches for wear
+      for (let i = 0; i < 350; i++) {
+        cx.fillStyle = `rgba(${Math.random()>0.5?255:0},${Math.random()>0.5?255:0},${Math.random()>0.5?255:0},${Math.random()*0.06})`;
+        cx.fillRect(Math.random()*SZ, Math.random()*SZ, 3+Math.random()*7, 3+Math.random()*7);
+      }
+    } else if (style === 'moving') {
+      // Diagonal hazard stripes
+      const sw = 28;
+      cx.fillStyle = 'rgba(0,0,0,0.30)';
+      for (let i = -SZ; i < SZ * 2; i += sw * 2) {
+        cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i + SZ, SZ); cx.lineTo(i + SZ + sw, SZ);
+        cx.lineTo(i + sw, 0); cx.closePath(); cx.fill();
+      }
+      // Grid lines
+      cx.strokeStyle = 'rgba(255,255,255,0.15)'; cx.lineWidth = 1;
+      for (let i = 0; i < SZ; i += 32) { cx.beginPath(); cx.moveTo(i,0); cx.lineTo(i,SZ); cx.stroke(); cx.beginPath(); cx.moveTo(0,i); cx.lineTo(SZ,i); cx.stroke(); }
+    } else if (style === 'carnival') {
+      // Polka dots for level 2
+      for (let i = 0; i < 40; i++) {
+        cx.fillStyle = `rgba(255,255,255,${0.05+Math.random()*0.12})`;
+        const r = 8 + Math.random() * 16;
+        cx.beginPath(); cx.arc(Math.random()*SZ, Math.random()*SZ, r, 0, Math.PI*2); cx.fill();
+      }
+    } else if (style === 'cloud') {
+      // Soft cloud texture
+      for (let i = 0; i < 80; i++) {
+        cx.fillStyle = `rgba(255,255,255,${Math.random()*0.15})`;
+        cx.beginPath(); cx.arc(Math.random()*SZ, Math.random()*SZ, 10+Math.random()*25, 0, Math.PI*2); cx.fill();
+      }
+    } else if (style === 'metal') {
+      // Brushed metal / sci-fi for level 5
+      cx.strokeStyle = 'rgba(255,255,255,0.12)'; cx.lineWidth = 1.5;
+      for (let i = 0; i < SZ; i += 16) { cx.beginPath(); cx.moveTo(0,i); cx.lineTo(SZ,i); cx.stroke(); }
+      cx.strokeStyle = 'rgba(0,0,0,0.18)'; cx.lineWidth = 0.5;
+      for (let i = 0; i < SZ; i += 8) { cx.beginPath(); cx.moveTo(i,0); cx.lineTo(i,SZ); cx.stroke(); }
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 1);
+    return tex;
+  }
+
+  // Pick texture style per level
+  const platTexStyle: 'stone' | 'carnival' | 'cloud' | 'metal' =
+    levelId === 'level2' ? 'carnival' :
+    levelId === 'level3' ? 'cloud'    :
+    levelId === 'level5' ? 'metal'    : 'stone';
+
+  // Shared PBR material factory (MeshStandardMaterial looks much better than Toon for env)
+  function makePlatMat(color: number, isMoving: boolean, isFinish: boolean): THREE.MeshStandardMaterial {
+    const tex = isFinish ? undefined : makePlatTex('#'+color.toString(16).padStart(6,'0'), isMoving ? 'moving' : platTexStyle);
+    return new THREE.MeshStandardMaterial({
+      color,
+      map: tex,
+      roughness: isFinish ? 0.25 : isMoving ? 0.55 : 0.82,
+      metalness: isFinish ? 0.45 : levelId === 'level5' ? 0.3 : 0.0,
+      envMapIntensity: 1,
+    });
   }
 
   // ── Cannon-es world ───────────────────────────────────────────────────────
@@ -289,29 +524,44 @@ function runGame(
   world.defaultContactMaterial.friction = 0.4;
 
   // ── Level geometry ────────────────────────────────────────────────────────
-  const grassMat = new THREE.MeshToonMaterial({ color: 0x55bb30 });
+  const grassColor  = levelId === 'level5' ? 0x3333AA : levelId === 'level4' ? 0x441100 : 0x44AA28;
+  const grassMat    = new THREE.MeshStandardMaterial({ color: grassColor, roughness: 0.9 });
   const movPlats: Array<{ body: CANNON.Body; mesh: THREE.Mesh; p: LevelData['platforms'][number]; sx: number; sy: number; sz: number }> = [];
 
   for (const p of levelData.platforms) {
+    const isFinish = p.color === '#FFD700' || p.color === '#B08000';
     const geo  = new THREE.BoxGeometry(p.w, p.h, p.d);
-    const mat  = new THREE.MeshToonMaterial({ color: hexC(p.color) });
+    const mat  = makePlatMat(hexC(p.color), p.type === 'moving', isFinish);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(p.x, p.y, p.z);
     mesh.receiveShadow = true;
 
-    if (p.type === 'static' && !['#FFD700','#B08000'].includes(p.color)) {
+    if (p.type === 'static' && !isFinish) {
+      // Grass/moss strip on top
       const cap = new THREE.Mesh(new THREE.BoxGeometry(p.w, 0.13, p.d), grassMat);
       cap.position.set(p.x, p.y + p.h / 2 + 0.065, p.z);
       cap.matrixAutoUpdate = false; cap.updateMatrix();
       scene.add(cap);
+      // Dark underside gives visual thickness
+      const under = new THREE.Mesh(
+        new THREE.BoxGeometry(p.w + 0.08, 0.1, p.d + 0.08),
+        new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1 })
+      );
+      under.position.set(p.x, p.y - p.h / 2 - 0.05, p.z);
+      under.matrixAutoUpdate = false; under.updateMatrix();
+      scene.add(under);
     }
     if (p.type === 'moving') {
       const stripe = new THREE.Mesh(
         new THREE.BoxGeometry(p.w, 0.12, p.d),
-        new THREE.MeshBasicMaterial({ color: 0xFFCC00 })
+        new THREE.MeshStandardMaterial({ color: 0xFFCC00, roughness: 0.5, emissive: 0x443300, emissiveIntensity: 0.4 })
       );
       stripe.position.y = p.h / 2 + 0.06;
       mesh.add(stripe);
+    }
+    if (isFinish) {
+      (mat as THREE.MeshStandardMaterial).emissive.set(0x554400);
+      (mat as THREE.MeshStandardMaterial).emissiveIntensity = 0.4;
     }
 
     const body = new CANNON.Body({ mass: 0, material: defMat });
@@ -333,10 +583,15 @@ function runGame(
 
   for (const h of levelData.hazards) {
     if (h.type === 'lava') {
-      const m = new THREE.Mesh(
-        new THREE.BoxGeometry(h.w, h.h, h.d),
-        new THREE.MeshBasicMaterial({ color: 0xFF5500 })
-      );
+      // Lava: emissive PBR material with glow
+      const lavaMat = new THREE.MeshStandardMaterial({
+        color: 0xFF4400,
+        emissive: 0xFF2200,
+        emissiveIntensity: 0.9,
+        roughness: 0.6,
+        metalness: 0.0,
+      });
+      const m = new THREE.Mesh(new THREE.BoxGeometry(h.w, h.h, h.d), lavaMat);
       m.position.set(h.x, h.y, h.z);
       scene.add(m);
       if (levelData.risingLava && !lavaMesh) {
@@ -346,18 +601,18 @@ function runGame(
       } else {
         m.matrixAutoUpdate = false; m.updateMatrix();
       }
-      // Glow ring above lava
+      // Glowing orange mist above lava
       const glow = new THREE.Mesh(
-        new THREE.BoxGeometry(h.w + 2, 0.15, h.d + 2),
-        new THREE.MeshBasicMaterial({ color: 0xFF8800, transparent: true, opacity: 0.35 })
+        new THREE.BoxGeometry(h.w + 3, 0.6, h.d + 3),
+        new THREE.MeshBasicMaterial({ color: 0xFF6600, transparent: true, opacity: 0.28 })
       );
-      glow.position.set(h.x, h.y + 0.3, h.z);
+      glow.position.set(h.x, h.y + 0.55, h.z);
       glow.matrixAutoUpdate = false; glow.updateMatrix();
       scene.add(glow);
     } else {
-      // Spikes
+      // Spikes — dark metallic with red tip
       const cnt = Math.max(1, Math.floor(h.w / 0.7));
-      const sm  = new THREE.MeshToonMaterial({ color: 0xCC2222 });
+      const sm  = new THREE.MeshStandardMaterial({ color: 0xBB1111, emissive: 0x440000, emissiveIntensity: 0.4, roughness: 0.4, metalness: 0.6 });
       const sg  = new THREE.ConeGeometry(0.22, 0.65, 4);
       for (let i = 0; i < cnt; i++) {
         const s = new THREE.Mesh(sg, sm);
@@ -741,6 +996,7 @@ function runGame(
     const realDt = frameMs / 1000;
 
     finRing.rotation.z += realDt * 1.1;
+    waterUniforms.time.value += realDt;
 
     // Respawn countdown
     if (isDead) {
