@@ -878,8 +878,10 @@ function runGame(
   const gameStartMs = performance.now();
 
   // ── Socket listeners ──────────────────────────────────────────────────────
-  socket.on('player_joined', ({ player }: { player: PlayerState }) => addRemote(player));
-  socket.on('player_left',   ({ playerId }: { playerId: string }) => removeRemote(playerId));
+  const onPlayerJoinedGame = ({ player }: { player: PlayerState }) => addRemote(player);
+  const onPlayerLeftGame   = ({ playerId }: { playerId: string }) => removeRemote(playerId);
+  socket.on('player_joined', onPlayerJoinedGame);
+  socket.on('player_left',   onPlayerLeftGame);
   socket.on('player_update', (s: PlayerState & { seq?: number }) => {
     const e = remoteMap.get(s.id);
     if (!e) return;
@@ -1389,7 +1391,7 @@ function runGame(
     window.removeEventListener('keydown', onKD); window.removeEventListener('keyup', onKU);
     window.removeEventListener('mouseup', onMU); window.removeEventListener('mousemove', onMM);
     window.removeEventListener('resize', onResize);
-    socket.off('player_joined'); socket.off('player_left');
+    socket.off('player_joined', onPlayerJoinedGame); socket.off('player_left', onPlayerLeftGame);
     socket.off('player_update'); socket.off('state_update'); socket.off('level_complete');
     scene.traverse(o => {
       if (o instanceof THREE.Mesh) {

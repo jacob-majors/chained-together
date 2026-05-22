@@ -47,30 +47,31 @@ const App: React.FC = () => {
     listenersRef.current = true;
     const socket = getSocket();
 
-    socket.on('room_created', ({ roomCode, player, players, hostId }: any) => {
+    socket.on('room_created', ({ roomCode, player, players, hostId, levelId }: any) => {
       setError('');
-      setRoom({ roomCode, levelId: room.levelId, hostId, players, localPlayer: player, isReady: false });
+      setRoom({ roomCode, levelId: levelId ?? 'level1', hostId, players, localPlayer: player, isReady: false });
       setScreen('waiting');
     });
 
-    socket.on('room_joined', ({ roomCode, player, players, hostId }: any) => {
+    socket.on('room_joined', ({ roomCode, player, players, hostId, levelId }: any) => {
       setError('');
-      setRoom(prev => ({ ...prev, roomCode, hostId, players, localPlayer: player, isReady: false }));
+      setRoom(prev => ({ ...prev, roomCode, hostId, players, localPlayer: player, levelId: levelId ?? prev.levelId, isReady: false }));
       setScreen('waiting');
     });
 
     socket.on('join_error',   ({ message }: { message: string }) => setError(message));
 
-    socket.on('player_joined', ({ player }: { player: PlayerState }) => {
+    const onPlayerJoined = ({ player }: { player: PlayerState }) => {
       setRoom(prev => ({
         ...prev,
         players: prev.players.find(p => p.id === player.id) ? prev.players : [...prev.players, player],
       }));
-    });
-
-    socket.on('player_left', ({ playerId }: { playerId: string }) => {
+    };
+    const onPlayerLeft = ({ playerId }: { playerId: string }) => {
       setRoom(prev => ({ ...prev, players: prev.players.filter(p => p.id !== playerId) }));
-    });
+    };
+    socket.on('player_joined', onPlayerJoined);
+    socket.on('player_left', onPlayerLeft);
 
     socket.on('player_ready', ({ playerId }: { playerId: string }) => {
       setRoom(prev => ({
@@ -83,12 +84,15 @@ const App: React.FC = () => {
       setRoom(prev => ({ ...prev, hostId: newHostId }));
     });
 
-    socket.on('game_start', () => setScreen('game'));
+    socket.on('game_start', ({ levelId }: { levelId?: string } = {}) => {
+      if (levelId) setRoom(prev => ({ ...prev, levelId }));
+      setScreen('game');
+    });
 
     return () => {
       socket.off('room_created'); socket.off('room_joined'); socket.off('join_error');
-      socket.off('player_joined'); socket.off('player_left'); socket.off('player_ready');
-      socket.off('host_changed'); socket.off('game_start');
+      socket.off('player_joined', onPlayerJoined); socket.off('player_left', onPlayerLeft);
+      socket.off('player_ready'); socket.off('host_changed'); socket.off('game_start');
       listenersRef.current = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,9 +109,8 @@ const App: React.FC = () => {
   }, []);
 
   const handleLevelSelected = useCallback((levelId: string) => {
-    // Store chosen level then emit create_room
     setRoom(prev => ({ ...prev, levelId }));
-    getSocket().emit('create_room', { playerName });
+    getSocket().emit('create_room', { playerName, levelId });
   }, [playerName]);
 
   const handleReady = useCallback(() => {

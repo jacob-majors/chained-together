@@ -35,17 +35,18 @@ io.on('connection', (socket) => {
   let currentRoom: GameRoom | null = null;
 
   // ── Create room ────────────────────────────────────────────────────────────
-  socket.on('create_room', ({ playerName }: { playerName: string }) => {
+  socket.on('create_room', ({ playerName, levelId }: { playerName: string; levelId?: string }) => {
     const code = makeCode();
     const room = new GameRoom(io, socket.id, code);
+    if (levelId) room.levelId = levelId;
     rooms.set(code, room);
 
     const player = room.addPlayer(socket.id, playerName);
     socket.join(code);
     currentRoom = room;
 
-    socket.emit('room_created', { roomCode: code, player, players: room.getPlayerList(), hostId: socket.id });
-    console.log(`[room] ${socket.id} created ${code}`);
+    socket.emit('room_created', { roomCode: code, player, players: room.getPlayerList(), hostId: socket.id, levelId: room.levelId });
+    console.log(`[room] ${socket.id} created ${code} (level: ${room.levelId})`);
   });
 
   // ── Join room ───────────────────────────────────────────────────────────────
@@ -61,7 +62,7 @@ io.on('connection', (socket) => {
     socket.join(code);
     currentRoom = room;
 
-    socket.emit('room_joined', { roomCode: code, player, players: room.getPlayerList(), hostId: room.hostId });
+    socket.emit('room_joined', { roomCode: code, player, players: room.getPlayerList(), hostId: room.hostId, levelId: room.levelId });
     socket.to(code).emit('player_joined', { player });
     console.log(`[room] ${socket.id} joined ${code}`);
   });
