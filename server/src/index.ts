@@ -77,6 +77,14 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── Change level (host only, lobby only) ──────────────────────────────────
+  socket.on('change_level', ({ levelId }: { levelId: string }) => {
+    if (!currentRoom || currentRoom.hostId !== socket.id || currentRoom.gameStarted) return;
+    currentRoom.levelId = levelId;
+    io.to(currentRoom.code).emit('level_changed', { levelId });
+    console.log(`[room] ${currentRoom.code} level → ${levelId}`);
+  });
+
   // ── Start game (host only) ──────────────────────────────────────────────────
   socket.on('start_game', () => {
     if (!currentRoom || currentRoom.hostId !== socket.id) return;

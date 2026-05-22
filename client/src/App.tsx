@@ -4,26 +4,26 @@
  * Flow:
  *   home ──► pick_level ──► waiting ──► game ──► victory
  *       └──► waiting (join)
- *
- * All socket.io listeners live here so nothing is registered twice.
+ *       └──► splitscreen (local 2-player, no server)
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import Home       from './components/Home';
+import Home        from './components/Home';
 import LevelSelect from './components/LevelSelect';
-import Lobby      from './components/Lobby';
-import GameCanvas from './game/GameCanvas';
+import Lobby       from './components/Lobby';
+import GameCanvas  from './game/GameCanvas';
+import SplitScreenCanvas from './game/SplitScreenCanvas';
 import { PlayerState, LEVEL_CATALOGUE, saveLeaderboardEntry, formatTime } from './types';
 import { getSocket } from './socket';
 
-type Screen = 'home' | 'pick_level' | 'waiting' | 'game' | 'victory';
+type Screen = 'home' | 'pick_level' | 'waiting' | 'game' | 'splitscreen' | 'victory';
 
 interface RoomState {
-  roomCode:   string;
-  levelId:    string;
-  hostId:     string;
-  players:    PlayerState[];
+  roomCode:    string;
+  levelId:     string;
+  hostId:      string;
+  players:     PlayerState[];
   localPlayer: PlayerState | null;
-  isReady:    boolean;
+  isReady:     boolean;
 }
 
 const EMPTY_ROOM: RoomState = {
@@ -32,14 +32,15 @@ const EMPTY_ROOM: RoomState = {
 };
 
 const App: React.FC = () => {
-  const [screen,     setScreen]     = useState<Screen>('home');
-  const [room,       setRoom]       = useState<RoomState>(EMPTY_ROOM);
-  const [playerName, setPlayerName] = useState('');
-  const [error,      setError]      = useState('');
-  const [victoryMsg, setVictoryMsg] = useState('');
-  const [finalTime,  setFinalTime]  = useState(0);
+  const [screen,      setScreen]      = useState<Screen>('home');
+  const [room,        setRoom]        = useState<RoomState>(EMPTY_ROOM);
+  const [playerName,  setPlayerName]  = useState('');
+  const [error,       setError]       = useState('');
+  const [victoryMsg,  setVictoryMsg]  = useState('');
+  const [finalTime,   setFinalTime]   = useState(0);
+  const [splitNames,  setSplitNames]  = useState<[string, string]>(['P1', 'P2']);
+  const [splitLevel,  setSplitLevel]  = useState('level1');
 
-  // Ref prevents double-registration in strict mode / hot reload
   const listenersRef = useRef(false);
 
   useEffect(() => {
@@ -59,7 +60,7 @@ const App: React.FC = () => {
       setScreen('waiting');
     });
 
-    socket.on('join_error',   ({ message }: { message: string }) => setError(message));
+    socket.on('join_error', ({ message }: { message: string }) => setError(message));
 
     const onPlayerJoined = ({ player }: { player: PlayerState }) => {
       setRoom(prev => ({
@@ -84,6 +85,10 @@ const App: React.FC = () => {
       setRoom(prev => ({ ...prev, hostId: newHostId }));
     });
 
+    socket.on('level_changed', ({ levelId }: { levelId: string }) => {
+      setRoom(prev => ({ ...prev, levelId }));
+    });
+
     socket.on('game_start', ({ levelId }: { levelId?: string } = {}) => {
       if (levelId) setRoom(prev => ({ ...prev, levelId }));
       setScreen('game');
@@ -92,13 +97,14 @@ const App: React.FC = () => {
     return () => {
       socket.off('room_created'); socket.off('room_joined'); socket.off('join_error');
       socket.off('player_joined', onPlayerJoined); socket.off('player_left', onPlayerLeft);
-      socket.off('player_ready'); socket.off('host_changed'); socket.off('game_start');
+      socket.off('player_ready'); socket.off('host_changed'); socket.off('level_changed');
+      socket.off('game_start');
       listenersRef.current = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleCreateRoom = useCallback((name: string) => {
     setPlayerName(name); setError(''); setScreen('pick_level');
   }, []);
@@ -106,6 +112,12 @@ const App: React.FC = () => {
   const handleJoinRoom = useCallback((name: string, code: string) => {
     setPlayerName(name); setError('');
     getSocket().emit('join_room', { roomCode: code, playerName: name });
+  }, []);
+
+  const handleSplitScreen = useCallback((p1Name: string, p2Name: string) => {
+    setSplitNames([p1Name, p2Name]);
+    setSplitLevel('level1');
+    setScreen('splitscreen');
   }, []);
 
   const handleLevelSelected = useCallback((levelId: string) => {
@@ -124,7 +136,6 @@ const App: React.FC = () => {
 
   const handleLeaveRoom = useCallback(() => {
     setRoom(EMPTY_ROOM); setScreen('home'); setError('');
-    // Reconnect so they can create/join a new room cleanly
     const s = getSocket();
     if (s.connected) s.disconnect();
     setTimeout(() => s.connect(), 100);
@@ -159,9 +170,14 @@ const App: React.FC = () => {
 
   const levelName = LEVEL_CATALOGUE.find(l => l.id === room.levelId)?.name ?? room.levelId;
 
-  // ── Screen routing ─────────────────────────────────────────────────────────
+  // ── Screen routing ──────────────────────────────────────────────────────────
   if (screen === 'home') {
-    return <Home onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} error={error} />;
+    return <Home
+      onCreateRoom={handleCreateRoom}
+      onJoinRoom={handleJoinRoom}
+      onSplitScreen={handleSplitScreen}
+      error={error}
+    />;
   }
 
   if (screen === 'pick_level') {
@@ -178,6 +194,7 @@ const App: React.FC = () => {
     return (
       <Lobby
         roomCode={room.roomCode}
+        levelId={room.levelId}
         levelName={levelName}
         players={room.players}
         localPlayerId={room.localPlayer.id}
@@ -198,6 +215,18 @@ const App: React.FC = () => {
         initialPlayers={room.players}
         roomCode={room.roomCode}
         onGameEnd={handleGameEnd}
+      />
+    );
+  }
+
+  if (screen === 'splitscreen') {
+    return (
+      <SplitScreenCanvas
+        levelId={splitLevel}
+        p1Name={splitNames[0]}
+        p2Name={splitNames[1]}
+        onGameEnd={handleGameEnd}
+        onBack={() => setScreen('home')}
       />
     );
   }
@@ -243,8 +272,12 @@ const App: React.FC = () => {
     );
   }
 
-  // Fallback: go home
-  return <Home onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} error={error} />;
+  return <Home
+    onCreateRoom={handleCreateRoom}
+    onJoinRoom={handleJoinRoom}
+    onSplitScreen={handleSplitScreen}
+    error={error}
+  />;
 };
 
 export default App;

@@ -1,10 +1,10 @@
-/** Waiting room — shown after create/join, before game starts. */
-import React from 'react';
-import { PlayerState } from '../types';
+import React, { useState } from 'react';
+import { PlayerState, LEVEL_CATALOGUE } from '../types';
 import { getSocket } from '../socket';
 
 interface Props {
   roomCode:      string;
+  levelId:       string;
   levelName:     string;
   players:       PlayerState[];
   localPlayerId: string;
@@ -16,14 +16,20 @@ interface Props {
 }
 
 const Lobby: React.FC<Props> = ({
-  roomCode, levelName, players, localPlayerId, hostId, isReady, onReady, onStart, onBack,
+  roomCode, levelId, levelName, players, localPlayerId, hostId, isReady, onReady, onStart, onBack,
 }) => {
   const isHost = localPlayerId === hostId || getSocket().id === hostId;
+  const [showLevels, setShowLevels] = useState(false);
+
+  const handleChangeLevel = (id: string) => {
+    getSocket().emit('change_level', { levelId: id });
+    setShowLevels(false);
+  };
 
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', height: '100vh', gap: 24,
+      justifyContent: 'center', height: '100vh', gap: 20,
       background: 'radial-gradient(ellipse at center, #1a1a4e 0%, #0a0a1a 100%)',
     }}>
       {/* Room code */}
@@ -37,7 +43,50 @@ const Lobby: React.FC<Props> = ({
         }}>
           {roomCode}
         </div>
-        <p style={{ color: '#555', fontSize: 12, marginTop: 8 }}>Level: <b style={{ color: '#ccc' }}>{levelName}</b></p>
+      </div>
+
+      {/* Level picker */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          <span style={{ color: '#555', fontSize: 13 }}>Map:</span>
+          <span style={{ color: '#ccc', fontWeight: 700, fontSize: 14 }}>
+            {LEVEL_CATALOGUE.find(l => l.id === levelId)?.emoji ?? ''} {levelName}
+          </span>
+          {isHost && (
+            <button
+              onClick={() => setShowLevels(v => !v)}
+              style={{
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 7, padding: '4px 10px', color: '#aaa', fontSize: 12, cursor: 'pointer',
+              }}
+            >
+              {showLevels ? 'Cancel' : 'Change'}
+            </button>
+          )}
+        </div>
+
+        {isHost && showLevels && (
+          <div style={{
+            marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8,
+            justifyContent: 'center', maxWidth: 420,
+          }}>
+            {LEVEL_CATALOGUE.map(l => (
+              <button
+                key={l.id}
+                onClick={() => handleChangeLevel(l.id)}
+                style={{
+                  background: l.id === levelId ? l.accentColor : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${l.id === levelId ? l.accentColor : 'rgba(255,255,255,0.12)'}`,
+                  borderRadius: 9, padding: '8px 14px', color: '#fff',
+                  fontWeight: l.id === levelId ? 700 : 400, fontSize: 13, cursor: 'pointer',
+                  transition: 'background 0.12s',
+                }}
+              >
+                {l.emoji} {l.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Player list */}

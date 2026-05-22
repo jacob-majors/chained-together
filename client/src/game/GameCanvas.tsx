@@ -30,7 +30,7 @@ import {
   DAMPING_GROUND, DAMPING_AIR, ANGULAR_DAMPING,
   PLAYER_RADIUS,
   MAX_ROPE_LENGTH, ROPE_PRE_CORR, ROPE_POST_CORR,
-  SEND_RATE_MS, RESPAWN_DELAY, FALL_DEATH_Y,
+  SEND_RATE_MS, FALL_DEATH_Y,
   CAM_AZIMUTH_DEF, CAM_ELEV_DEF, CAM_DIST_DEF, CAM_LERP,
   CHAIN_LINKS, MAX_ROPES,
 } from './constants';
@@ -132,11 +132,12 @@ interface Props {
 }
 
 const GameCanvas: React.FC<Props> = ({ levelId, localPlayer, initialPlayers, roomCode, onGameEnd }) => {
-  const mountRef   = useRef<HTMLDivElement>(null);
-  const miniRef    = useRef<HTMLCanvasElement>(null);
-  const hudRef     = useRef<HTMLDivElement>(null);
-  const alertRef   = useRef<HTMLDivElement>(null);
-  const errRef     = useRef<HTMLDivElement>(null);
+  const mountRef  = useRef<HTMLDivElement>(null);
+  const miniRef   = useRef<HTMLCanvasElement>(null);
+  const hudRef    = useRef<HTMLDivElement>(null);
+  const alertRef  = useRef<HTMLDivElement>(null);
+  const retryRef  = useRef<HTMLDivElement>(null);
+  const errRef    = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -145,7 +146,7 @@ const GameCanvas: React.FC<Props> = ({ levelId, localPlayer, initialPlayers, roo
 
     try {
       runGame(container, socket, levelId, localPlayer, initialPlayers, roomCode, onGameEnd,
-              miniRef, hudRef, alertRef);
+              miniRef, hudRef, alertRef, retryRef);
     } catch (err) {
       console.error('[GameCanvas] fatal:', err);
       if (errRef.current) {
@@ -154,7 +155,6 @@ const GameCanvas: React.FC<Props> = ({ levelId, localPlayer, initialPlayers, roo
       }
     }
 
-    // Cleanup stored by runGame on the container element
     return () => {
       const c = container as HTMLDivElement & { _cleanup?: () => void };
       c._cleanup?.();
@@ -189,18 +189,40 @@ const GameCanvas: React.FC<Props> = ({ levelId, localPlayer, initialPlayers, roo
         background: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: '6px 12px',
         lineHeight: 1.9, pointerEvents: 'none',
       }}>
-        WASD — move · Space/W — jump<br />
+        WASD — move · Space — jump<br />
         Mouse drag — rotate cam · Scroll — zoom<br />
         🔗 Chain pulls both players!
       </div>
 
-      {/* Respawn / coop alert */}
+      {/* Coop alert (checkpoint etc.) */}
       <div ref={alertRef} style={{
-        display: 'none', position: 'absolute', top: '48%', left: '50%',
-        transform: 'translate(-50%,-50%)',
-        fontFamily: 'monospace', fontSize: 22, fontWeight: 700, color: '#FF6666',
-        background: 'rgba(0,0,0,0.82)', borderRadius: 12, padding: '14px 36px', pointerEvents: 'none',
+        display: 'none', position: 'absolute', top: '20%', left: '50%',
+        transform: 'translateX(-50%)',
+        fontFamily: 'monospace', fontSize: 18, fontWeight: 700,
+        background: 'rgba(0,0,0,0.75)', borderRadius: 10, padding: '10px 28px', pointerEvents: 'none',
       }} />
+
+      {/* Death / retry overlay */}
+      <div ref={retryRef} style={{
+        display: 'none', position: 'absolute', inset: 0,
+        background: 'rgba(0,0,0,0.72)', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 18,
+      }}>
+        <div style={{ fontSize: 64 }}>💀</div>
+        <div style={{ fontFamily: 'monospace', fontSize: 26, fontWeight: 700, color: '#FF5555' }}>
+          You died!
+        </div>
+        <button
+          onClick={() => (mountRef.current as any)?._retry?.()}
+          style={{
+            padding: '14px 40px', borderRadius: 12, border: 'none',
+            background: '#FF6644', color: '#fff', fontWeight: 700,
+            fontSize: 18, cursor: 'pointer', letterSpacing: 0.5,
+          }}
+        >
+          Retry from Checkpoint
+        </button>
+      </div>
 
       {/* Error display */}
       <div ref={errRef} style={{
@@ -225,16 +247,17 @@ const GameCanvas: React.FC<Props> = ({ levelId, localPlayer, initialPlayers, roo
 
 // ── Main game function (isolated so errors can be caught) ──────────────────────
 function runGame(
-  container:     HTMLDivElement,
-  socket:        ReturnType<typeof getSocket>,
-  levelId:       string,
-  localPlayer:   PlayerState,
+  container:      HTMLDivElement,
+  socket:         ReturnType<typeof getSocket>,
+  levelId:        string,
+  localPlayer:    PlayerState,
   initialPlayers: PlayerState[],
-  roomCode:      string,
-  onGameEnd:     Props['onGameEnd'],
-  miniRef:       React.RefObject<HTMLCanvasElement>,
-  hudRef:        React.RefObject<HTMLDivElement>,
-  alertRef:      React.RefObject<HTMLDivElement>,
+  roomCode:       string,
+  onGameEnd:      Props['onGameEnd'],
+  miniRef:        React.RefObject<HTMLCanvasElement>,
+  hudRef:         React.RefObject<HTMLDivElement>,
+  alertRef:       React.RefObject<HTMLDivElement>,
+  retryRef:       React.RefObject<HTMLDivElement>,
 ) {
   const levelData = LEVELS[levelId] ?? LEVELS['level1'];
 
@@ -437,59 +460,103 @@ function runGame(
   }
 
   // ── Procedural canvas textures ────────────────────────────────────────────
-  // Creates tileable brick/stone patterns without external texture files.
   function makePlatTex(hexColor: string, style: 'stone' | 'moving' | 'carnival' | 'cloud' | 'metal'): THREE.CanvasTexture {
-    const SZ = 256;
+    const SZ = 512;
     const cv = document.createElement('canvas'); cv.width = cv.height = SZ;
     const cx = cv.getContext('2d')!;
     cx.fillStyle = hexColor; cx.fillRect(0, 0, SZ, SZ);
 
     if (style === 'stone') {
-      // Brick mortar lines
-      const bW = 64, bH = 32;
-      cx.strokeStyle = 'rgba(0,0,0,0.28)'; cx.lineWidth = 3;
-      for (let y = 0; y <= SZ; y += bH) {
-        const off = (Math.floor(y / bH) % 2) * (bW / 2);
-        cx.beginPath(); cx.moveTo(0, y); cx.lineTo(SZ, y); cx.stroke();
-        for (let x = off; x <= SZ; x += bW) {
-          cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x, y + bH); cx.stroke();
+      // Fine grain noise base
+      for (let y = 0; y < SZ; y += 2) {
+        for (let x = 0; x < SZ; x += 2) {
+          const v = (Math.random() - 0.5) * 28;
+          cx.fillStyle = `rgba(${v>0?255:0},${v>0?255:0},${v>0?255:0},${Math.abs(v)/255*0.18})`;
+          cx.fillRect(x, y, 2, 2);
         }
       }
-      // Random noise patches for wear
-      for (let i = 0; i < 350; i++) {
-        cx.fillStyle = `rgba(${Math.random()>0.5?255:0},${Math.random()>0.5?255:0},${Math.random()>0.5?255:0},${Math.random()*0.06})`;
-        cx.fillRect(Math.random()*SZ, Math.random()*SZ, 3+Math.random()*7, 3+Math.random()*7);
+      // Voronoi-like stone cells — draw crack lines between close seed pairs
+      const seeds: {x:number;y:number}[] = [];
+      for (let i = 0; i < 60; i++) seeds.push({ x: Math.random()*SZ, y: Math.random()*SZ });
+      cx.strokeStyle = 'rgba(0,0,0,0.55)'; cx.lineWidth = 1.2;
+      for (let i = 0; i < seeds.length; i++) {
+        for (let j = i+1; j < seeds.length; j++) {
+          const dx = seeds[j].x-seeds[i].x, dy = seeds[j].y-seeds[i].y;
+          const d = Math.sqrt(dx*dx+dy*dy);
+          if (d < 80) {
+            const mx = (seeds[i].x+seeds[j].x)/2, my = (seeds[i].y+seeds[j].y)/2;
+            const px = -dy/d, py = dx/d;
+            cx.beginPath(); cx.moveTo(mx+px*12, my+py*12); cx.lineTo(mx-px*12, my-py*12); cx.stroke();
+          }
+        }
       }
+      // Moss / highlight blobs
+      for (let i = 0; i < 18; i++) {
+        const r = 12+Math.random()*20;
+        const isMoss = Math.random() > 0.55;
+        cx.fillStyle = isMoss
+          ? `rgba(60,110,30,${0.06+Math.random()*0.10})`
+          : `rgba(255,255,255,${0.04+Math.random()*0.08})`;
+        cx.beginPath(); cx.ellipse(Math.random()*SZ, Math.random()*SZ, r, r*0.6, Math.random()*Math.PI, 0, Math.PI*2); cx.fill();
+      }
+      // Thin highlight rim on top
+      const grad = cx.createLinearGradient(0,0,0,SZ*0.18);
+      grad.addColorStop(0,'rgba(255,255,255,0.14)');
+      grad.addColorStop(1,'rgba(255,255,255,0)');
+      cx.fillStyle = grad; cx.fillRect(0,0,SZ,SZ*0.18);
     } else if (style === 'moving') {
-      // Diagonal hazard stripes
-      const sw = 28;
-      cx.fillStyle = 'rgba(0,0,0,0.30)';
-      for (let i = -SZ; i < SZ * 2; i += sw * 2) {
-        cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i + SZ, SZ); cx.lineTo(i + SZ + sw, SZ);
-        cx.lineTo(i + sw, 0); cx.closePath(); cx.fill();
+      // Bold diagonal warning stripes
+      const sw = 36;
+      cx.fillStyle = 'rgba(0,0,0,0.38)';
+      for (let i = -SZ; i < SZ*2; i += sw*2) {
+        cx.beginPath(); cx.moveTo(i,0); cx.lineTo(i+SZ,SZ); cx.lineTo(i+SZ+sw,SZ); cx.lineTo(i+sw,0); cx.closePath(); cx.fill();
       }
-      // Grid lines
-      cx.strokeStyle = 'rgba(255,255,255,0.15)'; cx.lineWidth = 1;
-      for (let i = 0; i < SZ; i += 32) { cx.beginPath(); cx.moveTo(i,0); cx.lineTo(i,SZ); cx.stroke(); cx.beginPath(); cx.moveTo(0,i); cx.lineTo(SZ,i); cx.stroke(); }
+      // Rivets
+      cx.fillStyle = 'rgba(255,220,0,0.55)';
+      for (let y = 32; y < SZ; y += 64) {
+        for (let x = 32; x < SZ; x += 64) {
+          cx.beginPath(); cx.arc(x,y,5,0,Math.PI*2); cx.fill();
+        }
+      }
+      // Edge highlight
+      cx.strokeStyle = 'rgba(255,255,255,0.20)'; cx.lineWidth = 3;
+      cx.strokeRect(2,2,SZ-4,SZ-4);
     } else if (style === 'carnival') {
-      // Polka dots for level 2
-      for (let i = 0; i < 40; i++) {
-        cx.fillStyle = `rgba(255,255,255,${0.05+Math.random()*0.12})`;
-        const r = 8 + Math.random() * 16;
+      // Bright polka-dot carnival
+      for (let i = 0; i < 60; i++) {
+        const r = 6+Math.random()*20;
+        cx.fillStyle = `rgba(255,255,255,${0.07+Math.random()*0.18})`;
         cx.beginPath(); cx.arc(Math.random()*SZ, Math.random()*SZ, r, 0, Math.PI*2); cx.fill();
       }
+      // Thin grid
+      cx.strokeStyle = 'rgba(255,255,255,0.12)'; cx.lineWidth = 1;
+      for (let i = 0; i < SZ; i += 48) { cx.beginPath(); cx.moveTo(i,0); cx.lineTo(i,SZ); cx.stroke(); cx.beginPath(); cx.moveTo(0,i); cx.lineTo(SZ,i); cx.stroke(); }
     } else if (style === 'cloud') {
-      // Soft cloud texture
-      for (let i = 0; i < 80; i++) {
-        cx.fillStyle = `rgba(255,255,255,${Math.random()*0.15})`;
-        cx.beginPath(); cx.arc(Math.random()*SZ, Math.random()*SZ, 10+Math.random()*25, 0, Math.PI*2); cx.fill();
+      // Fluffy cloud texture
+      for (let i = 0; i < 120; i++) {
+        const r = 8+Math.random()*30;
+        cx.fillStyle = `rgba(255,255,255,${0.04+Math.random()*0.14})`;
+        cx.beginPath(); cx.arc(Math.random()*SZ, Math.random()*SZ, r, 0, Math.PI*2); cx.fill();
       }
+      // Soft blue tint at bottom
+      const cg = cx.createLinearGradient(0,SZ*0.7,0,SZ);
+      cg.addColorStop(0,'rgba(100,180,255,0)');
+      cg.addColorStop(1,'rgba(100,180,255,0.18)');
+      cx.fillStyle = cg; cx.fillRect(0,0,SZ,SZ);
     } else if (style === 'metal') {
-      // Brushed metal / sci-fi for level 5
-      cx.strokeStyle = 'rgba(255,255,255,0.12)'; cx.lineWidth = 1.5;
-      for (let i = 0; i < SZ; i += 16) { cx.beginPath(); cx.moveTo(0,i); cx.lineTo(SZ,i); cx.stroke(); }
-      cx.strokeStyle = 'rgba(0,0,0,0.18)'; cx.lineWidth = 0.5;
-      for (let i = 0; i < SZ; i += 8) { cx.beginPath(); cx.moveTo(i,0); cx.lineTo(i,SZ); cx.stroke(); }
+      // Brushed metal panels
+      cx.strokeStyle = 'rgba(255,255,255,0.16)'; cx.lineWidth = 2;
+      for (let i = 0; i < SZ; i += 20) { cx.beginPath(); cx.moveTo(0,i); cx.lineTo(SZ,i); cx.stroke(); }
+      cx.strokeStyle = 'rgba(0,0,0,0.22)'; cx.lineWidth = 0.8;
+      for (let i = 0; i < SZ; i += 10) { cx.beginPath(); cx.moveTo(i,0); cx.lineTo(i,SZ); cx.stroke(); }
+      // Panel seams
+      cx.strokeStyle = 'rgba(0,200,255,0.22)'; cx.lineWidth = 2;
+      for (const y of [SZ*0.33, SZ*0.66]) { cx.beginPath(); cx.moveTo(0,y); cx.lineTo(SZ,y); cx.stroke(); }
+      // Hex bolts
+      cx.fillStyle = 'rgba(0,200,255,0.35)';
+      for (const [bx,by] of [[SZ*0.25,SZ*0.16],[SZ*0.75,SZ*0.16],[SZ*0.25,SZ*0.5],[SZ*0.75,SZ*0.5],[SZ*0.25,SZ*0.83],[SZ*0.75,SZ*0.83]]) {
+        cx.beginPath(); cx.arc(bx,by,7,0,Math.PI*2); cx.fill();
+      }
     }
     const tex = new THREE.CanvasTexture(cv);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -872,7 +939,7 @@ function runGame(
   function triggerShake(a: number, d: number) { shakeAmt = a; shakeTmr = d; }
 
   // ── Game state ────────────────────────────────────────────────────────────
-  let isDead = false, respawnCD = 0, lastCP = -1, levelComplete = false;
+  let isDead = false, lastCP = -1, levelComplete = false;
   let lastSent = 0, sendSeq = 0, platTime = 0, accumulator = 0;
   const FIXED_DT = 1 / 60;
   const gameStartMs = performance.now();
@@ -923,28 +990,34 @@ function runGame(
 
   function killPlayer() {
     if (isDead || levelComplete) return;
-    isDead = true; respawnCD = RESPAWN_DELAY;
+    isDead = true;
     localMesh.visible = false;
     burst(localMesh.position.x, localMesh.position.y, localMesh.position.z, 0xFF3300, 16);
     triggerShake(0.35, 0.5);
+    if (retryRef.current) retryRef.current.style.display = 'flex';
     socket.emit('player_update', { isDead: true, seq: sendSeq++ });
   }
 
   function respawnPlayer() {
     let best = lastCP;
     remoteMap.forEach(e => { if (e.state.checkpointIndex > best) best = e.state.checkpointIndex; });
-    let rx = spawnX, ry = spawnY, rz = spawnZ;
+    let rx = spawnX, ry = spawnY + 2, rz = spawnZ;
     if (best >= 0 && best < levelData.checkpoints.length) {
-      const cp = levelData.checkpoints[best]; rx = cp.x; ry = cp.y + 2.5; rz = cp.z ?? 0;
+      const cp = levelData.checkpoints[best]; rx = cp.x; ry = cp.y + 3.5; rz = cp.z ?? 0;
     }
     playerBody.position.set(rx, ry + PLAYER_RADIUS, rz);
     playerBody.velocity.set(0, 0, 0);
     localMesh.position.set(rx, ry, rz);
     localMesh.visible = true;
     isDead = false; groundTimer = 0;
+    if (retryRef.current) retryRef.current.style.display = 'none';
+    if (alertRef.current) alertRef.current.style.display = 'none';
     burst(rx, ry + 1, rz, 0x44FF88, 12);
     socket.emit('player_update', { isDead: false, x: rx, y: ry, z: rz, vx: 0, vy: 0, vz: 0, seq: sendSeq++ });
   }
+
+  // Expose retry callback to the JSX button
+  (container as any)._retry = () => respawnPlayer();
 
   // ── Mini-map ──────────────────────────────────────────────────────────────
   const MWORLD_W = 32, MWORLD_H = levelData.finishY + 8;
@@ -1000,19 +1073,12 @@ function runGame(
     finRing.rotation.z += realDt * 1.1;
     waterUniforms.time.value += realDt;
 
-    // Respawn countdown
+    // While dead, just keep rendering (so the overlay is visible) but skip physics
     if (isDead) {
-      respawnCD -= frameMs;
-      if (alertRef.current) {
-        alertRef.current.style.display = 'flex';
-        alertRef.current.textContent   = `💀 Respawning in ${Math.ceil(respawnCD / 1000)}…`;
-      }
-      if (respawnCD <= 0) { if (alertRef.current) alertRef.current.style.display = 'none'; respawnPlayer(); }
       updateCamera(realDt); tickParticles(realDt);
       renderer.render(scene, camera); drawMiniMap();
       return;
     }
-    if (alertRef.current) alertRef.current.style.display = 'none';
     if (levelComplete) { renderer.render(scene, camera); return; }
 
     // Ground + jump buffer timers
