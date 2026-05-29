@@ -490,7 +490,7 @@ function runSplitGame(
     keys.add(e.code);
     if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.code)) e.preventDefault();
     if (e.code === 'Space') jumpBufs[0] = 0.14;
-    if (e.code === 'ArrowUp' || e.code === 'Enter') jumpBufs[1] = 0.14;
+    if (e.code === 'Enter') jumpBufs[1] = 0.14;
   };
   const onKU = (e: KeyboardEvent) => keys.delete(e.code);
   window.addEventListener('keydown', onKD); window.addEventListener('keyup', onKU);
